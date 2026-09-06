@@ -1,0 +1,52 @@
+name: Build pumpkin with PR 3243
+
+# Validates the unmerged upstream fix for disconnected-player Arc cycles
+# against a real deployment. Only linux x64 - the stock release workflow
+# fans out to five platforms we do not need.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Merge PR 3243
+        run: |
+          git config user.email ci@local
+          git config user.name ci
+          git fetch https://github.com/Pumpkin-MC/Pumpkin.git refs/pull/3243/head:pr3243
+          git merge --no-edit pr3243
+          echo "--- resulting history ---"
+          git log --oneline -4
+
+      - run: rustup update stable && rustup default stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo build --release
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp target/release/pumpkin dist/pumpkin-x64-linux-pr3243
+          chmod +x dist/pumpkin-x64-linux-pr3243
+          ls -lh dist/
+          file dist/pumpkin-x64-linux-pr3243
+          sha256sum dist/pumpkin-x64-linux-pr3243 | tee dist/sha256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pumpkin-pr3243-linux-x64
+          path: dist/
+          if-no-files-found: error
